@@ -8,7 +8,7 @@ int greenLedIntesity = 0;
 int blueLedIntesity = 0;
 int whiteLedIntesity = 0;
 int brightness = 0;
-int testHour = 4;
+int testHour = 10;
 int testMinute = 0;
 int kelvin = 700;
 
@@ -16,7 +16,7 @@ int kelvin = 700;
 const int startHourCycle = 5;
 const int endHourCycle = 21;
 const int startEndFadeBrightnessMinutes = 180;
-const int startKelvin = 700;
+const int startKelvin = 1000;
 
 //Pins Definitions
 const int relePin = 2;
@@ -43,8 +43,8 @@ void loop() {
   Time t = rtc.time();
   testHour = (testHour > 21) ? startHourCycle : (testMinute > 60) ? testHour + 1 : testHour;
   testMinute = (testMinute <= 60) ? testMinute + 1 : 0;
-  //timeCycle(t.hr, t.min);
-  timeCycle(testHour, testMinute);
+  timeCycle(t.hr, t.min);
+  //timeCycle(testHour, testMinute);
   delay(100);
 }
 
@@ -86,16 +86,16 @@ void powerOffLight () {
   analogWrite(whiteLedPin, 0);
 }
 int setKelvin(int hours, int minutes) {  
-  if (hours <= (((endHourCycle - startHourCycle) / 2) + startHourCycle)) {
-    kelvin = startKelvin * ((hours - startHourCycle) + 1);
+  int halfCycleHour = (endHourCycle - startHourCycle) / 2;  
+  if (hours < (halfCycleHour + startHourCycle)) {
+    kelvin = (startKelvin * (hours - startHourCycle)) + (round(startKelvin / 60) * minutes);
+  } else if (hours > (halfCycleHour + startHourCycle)) {
+    kelvin = (startKelvin * (endHourCycle - hours)) - (round(startKelvin / 60) * minutes);
   } else {
-    kelvin = startKelvin * (endHourCycle - hours);
+    kelvin = startKelvin * halfCycleHour;
   }
 }
-void timeCycle(int hours, int minutes) {
-  Serial.println(hours);
-  Serial.println(kelvin);
-  Serial.println(brightness);
+void timeCycle(int hours, int minutes) {  
   if (hours >= startHourCycle && hours <= endHourCycle) {
     setBrightness(hours, minutes);
     setKelvin(hours, minutes);
