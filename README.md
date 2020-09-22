@@ -1,2 +1,2 @@
 # aquarium_light
-Aquarium lighting control
+Arduino Aquarium Lighting Control
