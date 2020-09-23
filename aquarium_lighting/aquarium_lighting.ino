@@ -8,9 +8,9 @@ int greenLedIntesity = 0;
 int blueLedIntesity = 0;
 int whiteLedIntesity = 0;
 int brightness = 0;
-int testHour = 10;
+int testHour = 0;
 int testMinute = 0;
-int kelvin = 700;
+int kelvin = 0;
 
 //Constants
 const int startHourCycle = 5;
@@ -19,7 +19,6 @@ const int startEndFadeBrightnessMinutes = 180;
 const int startKelvin = 1000;
 
 //Pins Definitions
-const int relePin = 2;
 const int ClkPino = 16;
 const int DatPino = 15;
 const int RstPino = 14;
@@ -37,15 +36,18 @@ void setup() {
   pinMode(redLedPin, OUTPUT);
   pinMode(greenLedPin, OUTPUT);
   pinMode(whiteLedPin, OUTPUT);
+
+  //Start
+  digitalWrite(relePin, HIGH);   
 }
 
-void loop() {
+void loop() {  
   Time t = rtc.time();
   testHour = (testHour > 21) ? startHourCycle : (testMinute > 60) ? testHour + 1 : testHour;
   testMinute = (testMinute <= 60) ? testMinute + 1 : 0;
   timeCycle(t.hr, t.min);
   //timeCycle(testHour, testMinute);
-  delay(100);
+  delay(1000);
 }
 
 String dayAsString(const Time::Day day) {
@@ -62,7 +64,7 @@ String dayAsString(const Time::Day day) {
 void setTime() {
   rtc.writeProtect(false);
   rtc.halt(false);
-  Time t(2020, 9, 19, 14, 04, 00, Time::kTuesday);
+  Time t(2020, 9, 23, 07, 8, 00, Time::kWednesday);
   rtc.time(t);
 }
 void printTime()
@@ -73,7 +75,10 @@ void printTime()
   snprintf(buf, sizeof(buf), "%s %04d-%02d-%02d %02d:%02d:%02d", day.c_str(), t.yr, t.mon, t.date, t.hr, t.min, t.sec);
   Serial.println(buf);
 }
-void powerOnLight () {
+void powerOnLight (int hours, int minutes) {
+  setBrightness(hours, minutes);
+  setKelvin(hours, minutes);
+  setRGBW();
   analogWrite(blueLedPin, blueLedIntesity);
   analogWrite(redLedPin, redLedIntesity);
   analogWrite(greenLedPin, greenLedIntesity);
@@ -85,8 +90,8 @@ void powerOffLight () {
   analogWrite(greenLedPin, 0);
   analogWrite(whiteLedPin, 0);
 }
-int setKelvin(int hours, int minutes) {  
-  int halfCycleHour = (endHourCycle - startHourCycle) / 2;  
+int setKelvin(int hours, int minutes) {
+  int halfCycleHour = (endHourCycle - startHourCycle) / 2;
   if (hours < (halfCycleHour + startHourCycle)) {
     kelvin = (startKelvin * (hours - startHourCycle)) + (round(startKelvin / 60) * minutes);
   } else if (hours > (halfCycleHour + startHourCycle)) {
@@ -95,22 +100,21 @@ int setKelvin(int hours, int minutes) {
     kelvin = startKelvin * halfCycleHour;
   }
 }
-void timeCycle(int hours, int minutes) {  
+void timeCycle(int hours, int minutes) {
+  Serial.println(kelvin);
+  Serial.println(brightness);  
   if (hours >= startHourCycle && hours <= endHourCycle) {
-    setBrightness(hours, minutes);
-    setKelvin(hours, minutes);
-    setRGBW();
-    powerOnLight();
-  } else {    
-    powerOffLight();
+    powerOnLight(hours, minutes);
+  } else {
+    powerOffLight();    
   }
 }
-void setBrightness(int hour, int minute) {  
+void setBrightness(int hour, int minute) {
   int startEndFadeBrightnessHours = startEndFadeBrightnessMinutes / 60;
-  if ((hour - startHourCycle) < startEndFadeBrightnessHours) {    
+  if ((hour - startHourCycle) < startEndFadeBrightnessHours) {
     int minuteBrightness = ((hour - startHourCycle) * 60) + minute;
     brightness = map(minuteBrightness, 0, startEndFadeBrightnessMinutes, 0, 255);
-  } else if ((endHourCycle - hour) <= startEndFadeBrightnessHours) {    
+  } else if ((endHourCycle - hour) <= startEndFadeBrightnessHours) {
     int minuteBrightness = ((endHourCycle - hour) * 60) - minute;
     brightness = map(minuteBrightness, startEndFadeBrightnessMinutes, 0, 255, 0);
   } else {
@@ -128,7 +132,7 @@ void setRGBW() {
 
 int whiteFromKelvin(int kelvin) {
   int temperature = kelvin / 100;
-  int  whiteValue = (temperature < 65) ? map(temperature, 0, 65, 0, 255) : map(temperature, 65, 120, 255, 0);  
+  int  whiteValue = (temperature < 65) ? map(temperature, 0, 65, 0, 255) : map(temperature, 65, 120, 255, 0);
   return max(min(whiteValue, 255), 0);
 }
 
@@ -139,7 +143,7 @@ int greenFromKelvin(int kelvin) {
     greenValue = round((99.4708025861 * log(temperature) - 161.1195681661));
   } else {
     greenValue = round(288.1221695283 * pow(temperature - 60, -0.0755148492));
-  }  
+  }
   return max(min(greenValue, 255), 0);
 }
 
@@ -148,7 +152,7 @@ int blueFromKelvin(int kelvin) {
   int blueValue = 0;
   if (temperature > 20) {
     blueValue = round(138.5177312231 * log(temperature - 10) - 305.0447927307);
-  }  
+  }
   return max(min(blueValue, 255), 0);
 }
 
@@ -157,6 +161,6 @@ int redFromKelvin(int kelvin) {
   int redValue = 255;
   if (temperature > 65) {
     redValue = round(329.698727446 * pow(temperature - 60, -0.1332047592));
-  }  
+  }
   return max(min(redValue, 255), 0);
 }
