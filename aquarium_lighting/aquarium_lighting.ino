@@ -3,10 +3,10 @@
 #include "math.h"
 
 //Global Variables
-int redLedIntesity = 0;
-int greenLedIntesity = 0;
-int blueLedIntesity = 0;
-int whiteLedIntesity = 0;
+int redLedIntensity = 0;
+int greenLedIntensity = 0;
+int blueLedIntensity = 0;
+int WhiteLedIntensity = 0;
 int brightness = 0;
 int testHour = 0;
 int testMinute = 0;
@@ -30,15 +30,11 @@ const int whiteLedPin = 11;
 DS1302 rtc(RstPino, DatPino, ClkPino);
 
 void setup() {
-  Serial.begin(9600);
-  pinMode(relePin, OUTPUT);
+  Serial.begin(9600);  
   pinMode(blueLedPin, OUTPUT);
   pinMode(redLedPin, OUTPUT);
   pinMode(greenLedPin, OUTPUT);
   pinMode(whiteLedPin, OUTPUT);
-
-  //Start
-  digitalWrite(relePin, HIGH);   
 }
 
 void loop() {  
@@ -71,18 +67,20 @@ void printTime()
 {
   Time t = rtc.time();
   const String day = dayAsString(t.day);
-  char buf[50];
-  snprintf(buf, sizeof(buf), "%s %04d-%02d-%02d %02d:%02d:%02d", day.c_str(), t.yr, t.mon, t.date, t.hr, t.min, t.sec);
-  Serial.println(buf);
+  char buf[100];
+  float brightnessPercentage = (((double)brightness / 255) * 100);
+  Serial.println(brightnessPercentage);
+  snprintf(buf, sizeof(buf), "%s %04d-%02d-%02d %02d:%02d:%02d - Temperature: %dk - Brightness: %f %", day.c_str(), t.yr, t.mon, t.date, t.hr, t.min, t.sec, kelvin, brightnessPercentage);
+  Serial.println(buf);  
 }
 void powerOnLight (int hours, int minutes) {
   setBrightness(hours, minutes);
   setKelvin(hours, minutes);
   setRGBW();
-  analogWrite(blueLedPin, blueLedIntesity);
-  analogWrite(redLedPin, redLedIntesity);
-  analogWrite(greenLedPin, greenLedIntesity);
-  analogWrite(whiteLedPin, whiteLedIntesity);
+  analogWrite(blueLedPin, blueLedIntensity);
+  analogWrite(redLedPin, redLedIntensity);
+  analogWrite(greenLedPin, greenLedIntensity);
+  analogWrite(whiteLedPin, WhiteLedIntensity);
 }
 void powerOffLight () {
   analogWrite(blueLedPin, 0);
@@ -100,9 +98,8 @@ int setKelvin(int hours, int minutes) {
     kelvin = startKelvin * halfCycleHour;
   }
 }
-void timeCycle(int hours, int minutes) {
-  Serial.println(kelvin);
-  Serial.println(brightness);  
+void timeCycle(int hours, int minutes) {   
+  printTime();
   if (hours >= startHourCycle && hours <= endHourCycle) {
     powerOnLight(hours, minutes);
   } else {
@@ -124,9 +121,8 @@ void setBrightness(int hour, int minute) {
 }
 
 void setRGBW() {
-  redLedIntesity = map(redFromKelvin(kelvin), 0, 255, 0, brightness);
-  greenLedIntesity = map(greenFromKelvin(kelvin), 0, 255, 0, brightness);;
-  blueLedIntesity = map(blueFromKelvin(kelvin), 0, 255, 0, brightness);;
+  redLedIntensity = map(redFromKelvin(kelvin), 0, 255, 0, brightness);
+  greenLedIntesity = map(greenFromKelvin(kelvin), 0, 255, 0, brightness);;  blueLedIntesity = map(blueFromKelvin(kelvin), 0, 255, 0, brightness);;
   whiteLedIntesity = map(whiteFromKelvin(kelvin), 0, 255, 0, brightness);;
 }
 
