@@ -3,13 +3,19 @@
 #include "math.h"
 #include "DallasTemperature.h"
 #include "OneWire.h"
+#include "SPI.h"
+#include "UIPEthernet.h"
+
+byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED }; //ATRIBUIÇÃO DE ENDEREÇO MAC AO ENC28J60
+byte ip[] = { 192, 168, 15, 20 }; //COLOQUE UMA FAIXA DE IP DISPONÍVEL DO SEU ROTEADOR. EX: 192.168.1.110  **** ISSO VARIA, NO MEU CASO É: 192.168.0.175
+EthernetServer server(80); //PORTA EM QUE A CONEXÃO SERÁ FEITA
 
 //Pins Definitions
 const int TemperaturePin = 7;
 const int ClkPin = 16;
 const int DatPin = 15;
 const int RstPin = 14;
-const int RelayPin = 2;
+const int RelayPin = 3;
 const int blueLedPin = 8;
 const int greenLedPin = 10;
 const int redLedPin = 9;
@@ -21,6 +27,8 @@ DallasTemperature sensors(&ourWire);
 
 void setup() {
   Serial.begin(9600);
+  Ethernet.begin(mac, ip);
+  server.begin();
   pinMode(RelayPin, OUTPUT);
   pinMode(blueLedPin, OUTPUT);
   pinMode(redLedPin, OUTPUT);
@@ -35,8 +43,44 @@ void loop() {
   moonLightCycle(t);
   pumpPowerCycle(t);
   printTemperature();
-  delay(1000);
+  EthernetShield();
+  delay(1);
 }
+
+String readString = String(30);
+int status = 0;
+void HeaderHTML (EthernetClient client) {
+  client.println("<html>");
+  client.println("HTTP/1.1 200 OK\r\n");
+  client.println("Content-Type: text/html\r\n");
+  client.println("<html>");
+}
+
+void BodyHTML (EthernetClient client) {
+  client.println("<body style=background-color:#ADD8E6>\r\n");
+  client.println("<center><font color='blue'><h1>Aquario</font></center></h1>");
+  client.println("</body>");
+}
+
+void FooterHTML(EthernetClient client) {
+  client.println("</html>");
+}
+
+void EthernetShield() {
+  EthernetClient client = server.available();
+  Serial.println(client);
+  if (client) {
+    while (client.connected()) {
+      if (client.available()) {
+        BodyHTML(client);
+        HeaderHTML(client);
+        FooterHTML(client);
+        client.stop();
+      }
+    }
+  }
+}
+
 void printTemperature() {
   sensors.requestTemperatures();
   Serial.print("Temperatura: ");
