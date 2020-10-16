@@ -21,17 +21,18 @@ void setup() {
   pinMode(redLedPin, OUTPUT);
   pinMode(greenLedPin, OUTPUT);
   pinMode(whiteLedPin, OUTPUT);
+  powerOffPump();
 }
 void loop() {
   Time t = rtc.time();
-  sunCycle(t);
-  moonCycle(t);
+  sunLigtCycle(t);
+  moonLightCycle(t);
+  pumpPowerCycle(t);
   delay(1000);
-  powerOnPump();
 }
 int testHour = 0;
 int testMinute = 0;
-void sunCycle(Time t) {
+void sunLigtCycle(Time t) {
   testHour = (testHour > 23) ? 21 : (testMinute > 60) ? testHour + 1 : testHour;
   testMinute = (testMinute <= 60) ? testMinute + 1 : 0;
   int startCycle = 5;
@@ -40,7 +41,7 @@ void sunCycle(Time t) {
   int startEndMinutesFade = 180;
   cycle(t.hr, t.min, startCycle, endCycle, startEndKelvin, startEndMinutesFade);
 }
-void moonCycle(Time t) {
+void moonLightCycle(Time t) {
   testHour = (testHour > 23) ? 21 : (testMinute > 60) ? testHour + 1 : testHour;
   testMinute = (testMinute <= 60) ? testMinute + 1 : 0;
   int startCycle = 21;
@@ -48,6 +49,17 @@ void moonCycle(Time t) {
   int startEndKelvin = 10000;
   int startEndMinutesFade = 30;
   cycle(t.hr, t.min, startCycle, endCycle, startEndKelvin, startEndMinutesFade);
+}
+void pumpPowerCycle(Time t) {
+  testHour = (testHour > 23) ? 21 : (testMinute > 60) ? testHour + 1 : testHour;
+  testMinute = (testMinute <= 60) ? testMinute + 1 : 0;
+  int startCycle = 5;
+  int endCycle = 23;
+  if (t.hr >= startCycle && t.hr <= endCycle)  {
+    powerOnPump();
+  } else {
+    powerOffPump();
+  }
 }
 void cycle(int currentHour, int currentMinute, int startHour, int endHour, int startKelvin, int startEndFade) {
   int currentMinutesTime = (currentHour * 60) + currentMinute;
