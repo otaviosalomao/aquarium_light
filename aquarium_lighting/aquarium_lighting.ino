@@ -3,18 +3,20 @@
 #include "math.h"
 
 //Pins Definitions
-const int ClkPino = 16;
-const int DatPino = 15;
-const int RstPino = 14;
+const int ClkPin = 16;
+const int DatPin = 15;
+const int RstPin = 14;
+const int RelayPin = 2;
 const int blueLedPin = 8;
 const int greenLedPin = 10;
 const int redLedPin = 9;
 const int whiteLedPin = 11;
 
-DS1302 rtc(RstPino, DatPino, ClkPino);
+DS1302 rtc(RstPin, DatPin, ClkPin);
 
 void setup() {
   Serial.begin(9600);
+  pinMode(RelayPin, OUTPUT);
   pinMode(blueLedPin, OUTPUT);
   pinMode(redLedPin, OUTPUT);
   pinMode(greenLedPin, OUTPUT);
@@ -23,7 +25,9 @@ void setup() {
 void loop() {
   Time t = rtc.time();
   sunCycle(t);
+  moonCycle(t);
   delay(1000);
+  powerOnPump();
 }
 int testHour = 0;
 int testMinute = 0;
@@ -34,6 +38,15 @@ void sunCycle(Time t) {
   int endCycle = 21;
   int startEndKelvin = 1000;
   int startEndMinutesFade = 180;
+  cycle(t.hr, t.min, startCycle, endCycle, startEndKelvin, startEndMinutesFade);
+}
+void moonCycle(Time t) {
+  testHour = (testHour > 23) ? 21 : (testMinute > 60) ? testHour + 1 : testHour;
+  testMinute = (testMinute <= 60) ? testMinute + 1 : 0;
+  int startCycle = 21;
+  int endCycle = 23;
+  int startEndKelvin = 10000;
+  int startEndMinutesFade = 30;
   cycle(t.hr, t.min, startCycle, endCycle, startEndKelvin, startEndMinutesFade);
 }
 void cycle(int currentHour, int currentMinute, int startHour, int endHour, int startKelvin, int startEndFade) {
@@ -77,6 +90,13 @@ void powerOnLight (int kelvin, int brightness) {
   analogWrite(redLedPin, redLedIntensity);
   analogWrite(greenLedPin, greenLedIntensity);
   analogWrite(whiteLedPin, whiteLedIntensity);
+}
+void powerOnPump() {
+  digitalWrite(RelayPin, LOW);
+}
+
+void powerOffPump() {
+  digitalWrite(RelayPin, HIGH);
 }
 void powerOffLight () {
   analogWrite(blueLedPin, 0);
