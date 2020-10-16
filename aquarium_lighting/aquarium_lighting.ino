@@ -1,8 +1,11 @@
 #include "stdio.h"
 #include "DS1302.h"
 #include "math.h"
+#include "DallasTemperature.h"
+#include "OneWire.h"
 
 //Pins Definitions
+const int TemperaturePin = 7;
 const int ClkPin = 16;
 const int DatPin = 15;
 const int RstPin = 14;
@@ -13,6 +16,8 @@ const int redLedPin = 9;
 const int whiteLedPin = 11;
 
 DS1302 rtc(RstPin, DatPin, ClkPin);
+OneWire ourWire(TemperaturePin);
+DallasTemperature sensors(&ourWire);
 
 void setup() {
   Serial.begin(9600);
@@ -21,6 +26,7 @@ void setup() {
   pinMode(redLedPin, OUTPUT);
   pinMode(greenLedPin, OUTPUT);
   pinMode(whiteLedPin, OUTPUT);
+  sensors.begin();
   powerOffPump();
 }
 void loop() {
@@ -28,7 +34,14 @@ void loop() {
   sunLigtCycle(t);
   moonLightCycle(t);
   pumpPowerCycle(t);
+  printTemperature();
   delay(1000);
+}
+void printTemperature() {
+  sensors.requestTemperatures();
+  Serial.print("Temperatura: ");
+  Serial.print(sensors.getTempCByIndex(0));
+  Serial.println("ºC");
 }
 int testHour = 0;
 int testMinute = 0;
