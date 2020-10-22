@@ -1,27 +1,25 @@
 #include "stdio.h"
-#include "DS1302.h"
+#include "RTClib.h"
 #include "math.h"
 #include "DallasTemperature.h"
 #include "OneWire.h"
 #include "SPI.h"
 #include "UIPEthernet.h"
+#include "Wire.h"
 
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED }; //ATRIBUIÇÃO DE ENDEREÇO MAC AO ENC28J60
 byte ip[] = { 192, 168, 15, 20 }; //COLOQUE UMA FAIXA DE IP DISPONÍVEL DO SEU ROTEADOR. EX: 192.168.1.110  **** ISSO VARIA, NO MEU CASO É: 192.168.0.175
 EthernetServer server(80); //PORTA EM QUE A CONEXÃO SERÁ FEITA
+RTC_DS1307 RTC;
 
 //Pins Definitions
 const int TemperaturePin = 7;
-const int ClkPin = 16;
-const int DatPin = 15;
-const int RstPin = 14;
-const int RelayPin = 3;
+const int RelayPin = 2;
 const int blueLedPin = 8;
 const int greenLedPin = 10;
 const int redLedPin = 9;
 const int whiteLedPin = 11;
 
-DS1302 rtc(RstPin, DatPin, ClkPin);
 OneWire ourWire(TemperaturePin);
 DallasTemperature sensors(&ourWire);
 
@@ -35,16 +33,19 @@ void setup() {
   pinMode(greenLedPin, OUTPUT);
   pinMode(whiteLedPin, OUTPUT);
   sensors.begin();
-  powerOffPump();
+  Wire.begin();
+  RTC.begin();
+  //RTC.adjust(DateTime(__DATE__, __TIME__));
+  powerOffPump();  
 }
 void loop() {
-  Time t = rtc.time();
-  sunLigtCycle(t);
-  moonLightCycle(t);
-  pumpPowerCycle(t);
-  printTemperature();
-  EthernetShield();
-  delay(1);
+  DateTime now = RTC.now();  
+  sunLigtCycle(now.hour(), now.minute());
+  moonLightCycle(now.hour(), now.minute());
+  pumpPowerCycle(now.hour());
+  printTemperature();   
+  EthernetShield();  
+  delay(1000);
 }
 
 String readString = String(30);
@@ -89,30 +90,30 @@ void printTemperature() {
 }
 int testHour = 0;
 int testMinute = 0;
-void sunLigtCycle(Time t) {
+void sunLigtCycle(int currentHour, int currentMinute) {
   testHour = (testHour > 23) ? 21 : (testMinute > 60) ? testHour + 1 : testHour;
   testMinute = (testMinute <= 60) ? testMinute + 1 : 0;
   int startCycle = 5;
   int endCycle = 21;
   int startEndKelvin = 1000;
   int startEndMinutesFade = 180;
-  cycle(t.hr, t.min, startCycle, endCycle, startEndKelvin, startEndMinutesFade);
+  cycle(currentHour, currentMinute, startCycle, endCycle, startEndKelvin, startEndMinutesFade);
 }
-void moonLightCycle(Time t) {
+void moonLightCycle(int currentHour, int currentMinute) {
   testHour = (testHour > 23) ? 21 : (testMinute > 60) ? testHour + 1 : testHour;
   testMinute = (testMinute <= 60) ? testMinute + 1 : 0;
   int startCycle = 21;
   int endCycle = 23;
   int startEndKelvin = 10000;
   int startEndMinutesFade = 30;
-  cycle(t.hr, t.min, startCycle, endCycle, startEndKelvin, startEndMinutesFade);
+  cycle(currentHour, currentMinute, startCycle, endCycle, startEndKelvin, startEndMinutesFade);
 }
-void pumpPowerCycle(Time t) {
+void pumpPowerCycle(int currentHour) {
   testHour = (testHour > 23) ? 21 : (testMinute > 60) ? testHour + 1 : testHour;
   testMinute = (testMinute <= 60) ? testMinute + 1 : 0;
   int startCycle = 5;
   int endCycle = 23;
-  if (t.hr >= startCycle && t.hr <= endCycle)  {
+  if (currentHour >= startCycle && currentHour <= endCycle)  {
     powerOnPump();
   } else {
     powerOffPump();
@@ -207,30 +208,14 @@ int redFromKelvin(int kelvin) {
   }
   return max(min(redValue, 255), 0);
 }
-String dayAsString(const Time::Day day) {
-  switch (day) {
-    case Time::kSunday: return "Domingo";
-    case Time::kMonday: return "Segunda-Feira";
-    case Time::kTuesday: return "Terca-Feira";
-    case Time::kWednesday: return "Quarta-Feira";
-    case Time::kThursday: return "Quinta-Feira";
-    case Time::kFriday: return "Sexta-Feira";
-    case Time::kSaturday: return "Sabado";
-  }
-}
-void setTime() {
-  rtc.writeProtect(false);
-  rtc.halt(false);
-  Time t(2020, 9, 28, 18, 37, 00, Time::kMonday);
-  rtc.time(t);
-}
+
 void printTime(int hour, int minutes, int kelvin, int brightness)
 {
-  Time t = rtc.time();
-  const String day = dayAsString(t.day);
+  DateTime now = RTC.now();  
+  char daysOfTheWeek[7][12] = {"Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"};  
   char buf[100];
   int brightnessPercentage = round(((double)brightness / 255) * 100);
-  snprintf(buf, sizeof(buf), "%s %04d-%02d-%02d %02d:%02d:%02d - Temperature: %dk - Brightness: %d%%", day.c_str(), t.yr, t.mon, t.date, hour, minutes, t.sec, kelvin, brightnessPercentage);
+  snprintf(buf, sizeof(buf), "%s %04d-%02d-%02d %02d:%02d:%02d - Temperature: %dk - Brightness: %d%%", daysOfTheWeek[now.dayOfTheWeek()], now.year(), now.month(), now.day(), hour, minutes, now.second(), kelvin, brightnessPercentage);
   Serial.println(buf);
 }
 void printFloat(float number) {
