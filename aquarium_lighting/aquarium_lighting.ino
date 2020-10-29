@@ -1,5 +1,6 @@
 #include "stdio.h"
-#include "RTClib.h"
+#include <ThreeWire.h>
+#include <RtcDS1302.h>
 #include "math.h"
 #include "DallasTemperature.h"
 #include "OneWire.h"
@@ -7,45 +8,107 @@
 #include "UIPEthernet.h"
 #include "Wire.h"
 
-byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED }; //ATRIBUIÇÃO DE ENDEREÇO MAC AO ENC28J60
-byte ip[] = { 192, 168, 15, 20 }; //COLOQUE UMA FAIXA DE IP DISPONÍVEL DO SEU ROTEADOR. EX: 192.168.1.110  **** ISSO VARIA, NO MEU CASO É: 192.168.0.175
-EthernetServer server(80); //PORTA EM QUE A CONEXÃO SERÁ FEITA
-RTC_DS1307 RTC;
 
 //Pins Definitions
 const int TemperaturePin = 7;
-const int RelayPin = 2;
-const int blueLedPin = 8;
-const int greenLedPin = 10;
-const int redLedPin = 9;
-const int whiteLedPin = 11;
+const int HeaterPin = 1;
+const int PumpPin = 2;
+const int BlueLedPin = 8;
+const int GreenLedPin = 10;
+const int RedLedPin = 9;
+const int WhiteLedPin = 11;
+const int RTCDatPin = 5;
+const int RTCCLKPin = 6;
+const int RTCRSTPin = 4;
 
+//Declarations
+EthernetServer server(80); //PORTA EM QUE A CONEXÃO SERÁ FEITA
+ThreeWire myWire(RTCDatPin, RTCCLKPin, RTCRSTPin); // DAT, CLK, RST
+RtcDS1302<ThreeWire> Rtc(myWire);
 OneWire ourWire(TemperaturePin);
 DallasTemperature sensors(&ourWire);
+
+//Constants
+byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED }; //ATRIBUIÇÃO DE ENDEREÇO MAC AO ENC28J60
+byte ip[] = { 192, 168, 15, 20 }; //IP Ethernet Shield
+const int MinWaterTemperature = 26;
+const int SunLightStartTime = 5;
+const int SunLightEndTime = 21;
+const int SunLightStartEndKelvin = 1000;
+const int SunLigtStartEndMinutesFade = 180;
+const int MoonLightStartTime = 21;
+const int MoonLightEndTime = 23;
+const int MoonLightStartEndKelvin = 10000;
+const int MoonLigtStartEndMinutesFade = 30;
+const int PumpStartTime = 5;
+const int PumpEndTime = 23;
+
 
 void setup() {
   Serial.begin(9600);
   Ethernet.begin(mac, ip);
-  server.begin();
-  pinMode(RelayPin, OUTPUT);
-  pinMode(blueLedPin, OUTPUT);
-  pinMode(redLedPin, OUTPUT);
-  pinMode(greenLedPin, OUTPUT);
-  pinMode(whiteLedPin, OUTPUT);
+  pinMode(BlueLedPin, OUTPUT);
+  pinMode(RedLedPin, OUTPUT);
+  pinMode(GreenLedPin, OUTPUT);
+  pinMode(WhiteLedPin, OUTPUT);
+  SetTime();
   sensors.begin();
   Wire.begin();
-  RTC.begin();
-  //RTC.adjust(DateTime(__DATE__, __TIME__));
-  powerOffPump();  
+  Rtc.Begin();
+  server.begin();
 }
+
 void loop() {
-  DateTime now = RTC.now();  
-  sunLigtCycle(now.hour(), now.minute());
-  moonLightCycle(now.hour(), now.minute());
-  pumpPowerCycle(now.hour());
-  printTemperature();   
-  EthernetShield();  
+  RtcDateTime now = Rtc.GetDateTime();
+  int hour = now.Hour();
+  int minute = now.Minute();
+  int temperature = WaterTemperature();
+  //SunLight
+  CycleControl(hour, minute, SunLightStartTime, SunLightEndTime, SunLightStartEndKelvin, SunLigtStartEndMinutesFade);
+  //MoonLight
+  CycleControl(hour, minute, MoonLightStartTime, MoonLightEndTime, MoonLightStartEndKelvin, MoonLigtStartEndMinutesFade);
+  //Pump
+  PumpControl(hour, PumpStartTime, PumpEndTime);
+  //Heater
+  HeaterControl(temperature, MinWaterTemperature);
+  printTemperature();
+  printTime(now.Year(), now.Month(), now.Day(), now.DayOfWeek(), now.Hour(), now.Minute(), now.Second());
+  EthernetShield();
   delay(1000);
+}
+
+void CycleControl(int currentHour, int currentMinute, int startHour, int endHour, int startKelvin, int startEndFade) {
+  int currentMinutesTime = (currentHour * 60) + currentMinute;
+  int startMinutesCycle = startHour * 60;
+  int endMinutesCycle = endHour * 60;
+  if (currentMinutesTime >= startMinutesCycle && currentMinutesTime <= endMinutesCycle) {
+    int brightness = fadeBrightness(currentHour, currentMinute, startHour, endHour, startEndFade, startEndFade);
+    int kelvin = cycleKelvin(currentHour, currentMinute, startHour, endHour, startKelvin);
+    printLightInformation(kelvin, brightness);
+    powerOnLight(kelvin, brightness);
+  }
+}
+
+void PumpControl(int currentHour, int startHour, int endHour) {
+  if (currentHour >= startHour && currentHour < endHour)  {
+    powerOnPump();
+  } else {
+    powerOffPump();
+  }
+}
+
+void HeaterControl(float temperature, float minTemperature) {
+  if (temperature < minTemperature) {
+    powerOnHeater();
+  }
+  else {
+    powerOffHeater();
+  }
+}
+
+float WaterTemperature() {
+  sensors.requestTemperatures();
+  return sensors.getTempCByIndex(0);
 }
 
 String readString = String(30);
@@ -69,7 +132,6 @@ void FooterHTML(EthernetClient client) {
 
 void EthernetShield() {
   EthernetClient client = server.available();
-  Serial.println(client);
   if (client) {
     while (client.connected()) {
       if (client.available()) {
@@ -82,54 +144,6 @@ void EthernetShield() {
   }
 }
 
-void printTemperature() {
-  sensors.requestTemperatures();
-  Serial.print("Temperatura: ");
-  Serial.print(sensors.getTempCByIndex(0));
-  Serial.println("ºC");
-}
-int testHour = 0;
-int testMinute = 0;
-void sunLigtCycle(int currentHour, int currentMinute) {
-  testHour = (testHour > 23) ? 21 : (testMinute > 60) ? testHour + 1 : testHour;
-  testMinute = (testMinute <= 60) ? testMinute + 1 : 0;
-  int startCycle = 5;
-  int endCycle = 21;
-  int startEndKelvin = 1000;
-  int startEndMinutesFade = 180;
-  cycle(currentHour, currentMinute, startCycle, endCycle, startEndKelvin, startEndMinutesFade);
-}
-void moonLightCycle(int currentHour, int currentMinute) {
-  testHour = (testHour > 23) ? 21 : (testMinute > 60) ? testHour + 1 : testHour;
-  testMinute = (testMinute <= 60) ? testMinute + 1 : 0;
-  int startCycle = 21;
-  int endCycle = 23;
-  int startEndKelvin = 10000;
-  int startEndMinutesFade = 30;
-  cycle(currentHour, currentMinute, startCycle, endCycle, startEndKelvin, startEndMinutesFade);
-}
-void pumpPowerCycle(int currentHour) {
-  testHour = (testHour > 23) ? 21 : (testMinute > 60) ? testHour + 1 : testHour;
-  testMinute = (testMinute <= 60) ? testMinute + 1 : 0;
-  int startCycle = 5;
-  int endCycle = 23;
-  if (currentHour >= startCycle && currentHour <= endCycle)  {
-    powerOnPump();
-  } else {
-    powerOffPump();
-  }
-}
-void cycle(int currentHour, int currentMinute, int startHour, int endHour, int startKelvin, int startEndFade) {
-  int currentMinutesTime = (currentHour * 60) + currentMinute;
-  int startMinutesCycle = startHour * 60;
-  int endMinutesCycle = endHour * 60;
-  if (currentMinutesTime >= startMinutesCycle && currentMinutesTime <= endMinutesCycle) {
-    int brightness = fadeBrightness(currentHour, currentMinute, startHour, endHour, startEndFade, startEndFade);
-    int kelvin = cycleKelvin(currentHour, currentMinute, startHour, endHour, startKelvin);
-    printTime(currentHour, currentMinute, kelvin, brightness);
-    powerOnLight(kelvin, brightness);
-  }
-}
 int cycleKelvin(int hours, int minutes, int startCycleHour, int endCycleHour, int startKelvin) {
   int halfCycleHour = (endCycleHour - startCycleHour) / 2;
   if (hours < (halfCycleHour + startCycleHour)) {
@@ -140,6 +154,7 @@ int cycleKelvin(int hours, int minutes, int startCycleHour, int endCycleHour, in
     return startKelvin * halfCycleHour;
   }
 }
+
 int fadeBrightness(int hour, int minute, int startCycleHour, int endCycleHour, int startMinutesFade, int endMinutesFade) {
   int brightness = 255;
   int currentStartCycleMinutes = ((hour - startCycleHour) * 60) + minute;
@@ -151,29 +166,43 @@ int fadeBrightness(int hour, int minute, int startCycleHour, int endCycleHour, i
   }
   return max(min(brightness, 255), 0);
 }
+
 void powerOnLight (int kelvin, int brightness) {
   int redLedIntensity = map(redFromKelvin(kelvin), 0, 255, 0, brightness);
   int greenLedIntensity = map(greenFromKelvin(kelvin), 0, 255, 0, brightness);
   int blueLedIntensity = map(blueFromKelvin(kelvin), 0, 255, 0, brightness);
   int whiteLedIntensity = map(whiteFromKelvin(kelvin), 0, 255, 0, brightness);
-  analogWrite(blueLedPin, blueLedIntensity);
-  analogWrite(redLedPin, redLedIntensity);
-  analogWrite(greenLedPin, greenLedIntensity);
-  analogWrite(whiteLedPin, whiteLedIntensity);
+  analogWrite(BlueLedPin, blueLedIntensity);
+  analogWrite(RedLedPin, redLedIntensity);
+  analogWrite(GreenLedPin, greenLedIntensity);
+  analogWrite(WhiteLedPin, whiteLedIntensity);
 }
+
 void powerOnPump() {
-  digitalWrite(RelayPin, LOW);
+  pinMode(PumpPin, OUTPUT);
+  digitalWrite(PumpPin, LOW);
+}
+
+void powerOnHeater() {
+  pinMode(HeaterPin, OUTPUT);
+  digitalWrite(HeaterPin, LOW);
+}
+
+void powerOffHeater() {
+  digitalWrite(HeaterPin, HIGH);
 }
 
 void powerOffPump() {
-  digitalWrite(RelayPin, HIGH);
+  digitalWrite(PumpPin, HIGH);
 }
+
 void powerOffLight () {
-  analogWrite(blueLedPin, 0);
-  analogWrite(redLedPin, 0);
-  analogWrite(greenLedPin, 0);
-  analogWrite(whiteLedPin, 0);
+  analogWrite(BlueLedPin, 0);
+  analogWrite(RedLedPin, 0);
+  analogWrite(GreenLedPin, 0);
+  analogWrite(WhiteLedPin, 0);
 }
+
 int whiteFromKelvin(int kelvin) {
   int temperature = kelvin / 100;
   int  whiteValue = (temperature < 65) ? map(temperature, 0, 65, 0, 255) : map(temperature, 65, 120, 255, 0);
@@ -209,25 +238,65 @@ int redFromKelvin(int kelvin) {
   return max(min(redValue, 255), 0);
 }
 
-void printTime(int hour, int minutes, int kelvin, int brightness)
+void printTime(int year, int month, int day, int dayOfWeek, int hour, int minute, int second)
 {
-  DateTime now = RTC.now();  
-  char daysOfTheWeek[7][12] = {"Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"};  
+  char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
+  char buf[100];
+  snprintf(buf, sizeof(buf), "%s %04d-%02d-%02d %02d:%02d:%02d", daysOfTheWeek[dayOfWeek], year, month, day, hour, minute, second);
+  Serial.println(buf);
+}
+
+void printTemperature() {
+  sensors.requestTemperatures();
+  printFloat("Water Temperature: ", sensors.getTempCByIndex(0), "ºC");
+}
+
+void printLightInformation(int kelvin, int brightness)
+{
   char buf[100];
   int brightnessPercentage = round(((double)brightness / 255) * 100);
-  snprintf(buf, sizeof(buf), "%s %04d-%02d-%02d %02d:%02d:%02d - Temperature: %dk - Brightness: %d%%", daysOfTheWeek[now.dayOfTheWeek()], now.year(), now.month(), now.day(), hour, minutes, now.second(), kelvin, brightnessPercentage);
+  snprintf(buf, sizeof(buf), "Color Temperature(K): %dk - Brightness: %d%%", kelvin, brightnessPercentage);
   Serial.println(buf);
 }
-void printFloat(float number) {
+
+void printFloat(char previousStr[100], float number, char afterStr[100]) {
   static char outstr[15];
-  char buf[20];
+  char buf[100];
   dtostrf(number, 7, 2, outstr);
-  snprintf(buf, sizeof(buf), "%s%%", outstr);
+  snprintf(buf, sizeof(buf), "%s%s%s", previousStr, outstr, afterStr);
   Serial.println(buf);
+}
+
+void SetTime() {
+  RtcDateTime compiled = RtcDateTime(__DATE__, __TIME__);
+  if (Rtc.GetIsWriteProtected()) { //SE O RTC ESTIVER PROTEGIDO CONTRA GRAVAÇÃO, FAZ
+    Serial.println("RTC está protegido contra gravação. Habilitando a gravação agora..."); //IMPRIME O TEXTO NO MONITOR SERIAL
+    Rtc.SetIsWriteProtected(false); //HABILITA GRAVAÇÃO NO RTC
+    Serial.println(); //QUEBRA DE LINHA NA SERIAL
+  }
+  if (!Rtc.GetIsRunning()) { //SE RTC NÃO ESTIVER SENDO EXECUTADO, FAZ
+    Serial.println("RTC não está funcionando de forma contínua. Iniciando agora..."); //IMPRIME O TEXTO NO MONITOR SERIAL
+    Rtc.SetIsRunning(true); //INICIALIZA O RTC
+    Serial.println(); //QUEBRA DE LINHA NA SERIAL
+  }
+  RtcDateTime now = Rtc.GetDateTime(); //VARIÁVEL RECEBE INFORMAÇÕES
+  if (now < compiled) { //SE A INFORMAÇÃO REGISTRADA FOR MENOR QUE A INFORMAÇÃO COMPILADA, FAZ
+    Serial.println("As informações atuais do RTC estão desatualizadas. Atualizando informações..."); //IMPRIME O TEXTO NO MONITOR SERIAL
+    Rtc.SetDateTime(compiled); //INFORMAÇÕES COMPILADAS SUBSTITUEM AS INFORMAÇÕES ANTERIORES
+    Serial.println(); //QUEBRA DE LINHA NA SERIAL
+  }
+  else if (now > compiled) { //SENÃO, SE A INFORMAÇÃO REGISTRADA FOR MAIOR QUE A INFORMAÇÃO COMPILADA, FAZ
+    Serial.println("As informações atuais do RTC são mais recentes que as de compilação. Isso é o esperado."); //IMPRIME O TEXTO NO MONITOR SERIAL
+    Serial.println(); //QUEBRA DE LINHA NA SERIAL
+  }
+  else if (now == compiled) { //SENÃO, SE A INFORMAÇÃO REGISTRADA FOR IGUAL A INFORMAÇÃO COMPILADA, FAZ
+    Serial.println("As informações atuais do RTC são iguais as de compilação! Não é o esperado, mas está tudo OK."); //IMPRIME O TEXTO NO MONITOR SERIAL
+    Serial.println(); //QUEBRA DE LINHA NA SERIAL
+  }
 }
 void TestPinLeds() {
-  analogWrite(blueLedPin, 0);
-  analogWrite(redLedPin, 0);
-  analogWrite(greenLedPin, 0);
-  analogWrite(whiteLedPin, 0);
+  analogWrite(BlueLedPin, 0);
+  analogWrite(RedLedPin, 0);
+  analogWrite(GreenLedPin, 0);
+  analogWrite(WhiteLedPin, 0);
 }
