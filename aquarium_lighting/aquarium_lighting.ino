@@ -10,16 +10,16 @@
 
 
 //Pins Definitions
-const int TemperaturePin = 7;
-const int HeaterPin = 1;
-const int PumpPin = 2;
-const int BlueLedPin = 8;
-const int GreenLedPin = 10;
-const int RedLedPin = 9;
-const int WhiteLedPin = 11;
-const int RTCDatPin = 5;
-const int RTCCLKPin = 6;
-const int RTCRSTPin = 4;
+const int TemperaturePin = 2;
+const int HeaterPin = 5;
+const int PumpPin = 6;
+const int BlueLedPin = 10;
+const int GreenLedPin = 11;
+const int RedLedPin = 12;
+const int WhiteLedPin = 13;
+const int RTCDatPin = 8;
+const int RTCCLKPin = 9;
+const int RTCRSTPin = 7;
 
 //Declarations
 EthernetServer server(80); //PORTA EM QUE A CONEXÃO SERÁ FEITA
@@ -31,18 +31,16 @@ DallasTemperature sensors(&ourWire);
 //Constants
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED }; //ATRIBUIÇÃO DE ENDEREÇO MAC AO ENC28J60
 byte ip[] = { 192, 168, 15, 20 }; //IP Ethernet Shield
-const int MinWaterTemperature = 26;
+const int MinWaterTemperature = 25;
 const int SunLightStartTime = 5;
 const int SunLightEndTime = 21;
 const int SunLightStartEndKelvin = 1000;
-const int SunLigtStartEndMinutesFade = 180;
+const int SunLigtStartEndMinutesFade = 420;
 const int MoonLightStartTime = 21;
 const int MoonLightEndTime = 23;
 const int MoonLightStartEndKelvin = 10000;
 const int MoonLigtStartEndMinutesFade = 30;
-const int PumpStartTime = 5;
-const int PumpEndTime = 23;
-
+const float MaxBrightnessPercentage = 80;
 
 void setup() {
   Serial.begin(9600);
@@ -62,13 +60,13 @@ void loop() {
   RtcDateTime now = Rtc.GetDateTime();
   int hour = now.Hour();
   int minute = now.Minute();
-  int temperature = WaterTemperature();
+  float temperature = WaterTemperature();
   //SunLight
   CycleControl(hour, minute, SunLightStartTime, SunLightEndTime, SunLightStartEndKelvin, SunLigtStartEndMinutesFade);
   //MoonLight
   CycleControl(hour, minute, MoonLightStartTime, MoonLightEndTime, MoonLightStartEndKelvin, MoonLigtStartEndMinutesFade);
   //Pump
-  PumpControl(hour, PumpStartTime, PumpEndTime);
+  PumpControl(hour);
   //Heater
   HeaterControl(temperature, MinWaterTemperature);
   printTemperature();
@@ -89,8 +87,8 @@ void CycleControl(int currentHour, int currentMinute, int startHour, int endHour
   }
 }
 
-void PumpControl(int currentHour, int startHour, int endHour) {
-  if (currentHour >= startHour && currentHour < endHour)  {
+void PumpControl(int currentHour) {
+  if (currentHour % 2 == 0)  {
     powerOnPump();
   } else {
     powerOffPump();
@@ -98,11 +96,13 @@ void PumpControl(int currentHour, int startHour, int endHour) {
 }
 
 void HeaterControl(float temperature, float minTemperature) {
-  if (temperature < minTemperature) {
-    powerOnHeater();
-  }
-  else {
-    powerOffHeater();
+  if (temperature < 50 & temperature > 10) {
+    if (temperature < (minTemperature + (minTemperature * 0.03))) {
+      powerOnHeater();
+    }
+    else if (temperature > minTemperature) {
+      powerOffHeater();
+    }
   }
 }
 
@@ -156,15 +156,16 @@ int cycleKelvin(int hours, int minutes, int startCycleHour, int endCycleHour, in
 }
 
 int fadeBrightness(int hour, int minute, int startCycleHour, int endCycleHour, int startMinutesFade, int endMinutesFade) {
-  int brightness = 255;
+  int maxBrightness = round(255 * (MaxBrightnessPercentage / 100));
+  int brightness = maxBrightness;
   int currentStartCycleMinutes = ((hour - startCycleHour) * 60) + minute;
   int currentEndCycleMinutes = ((endCycleHour - hour) * 60 - minute);
   if (currentStartCycleMinutes < startMinutesFade) {
-    brightness = map(currentStartCycleMinutes, 0, endMinutesFade, 0, 255);
+    brightness = map(currentStartCycleMinutes, 0, endMinutesFade, 0, maxBrightness);
   } else if (currentEndCycleMinutes <= endMinutesFade) {
-    brightness = map(currentEndCycleMinutes, endMinutesFade, 0, 255, 0);
+    brightness = map(currentEndCycleMinutes, endMinutesFade, 0, maxBrightness, 0);
   }
-  return max(min(brightness, 255), 0);
+  return max(min(brightness, maxBrightness), 0);
 }
 
 void powerOnLight (int kelvin, int brightness) {
@@ -181,19 +182,23 @@ void powerOnLight (int kelvin, int brightness) {
 void powerOnPump() {
   pinMode(PumpPin, OUTPUT);
   digitalWrite(PumpPin, LOW);
+  Serial.println("PUMP STATUS: UP");
 }
 
 void powerOnHeater() {
   pinMode(HeaterPin, OUTPUT);
   digitalWrite(HeaterPin, LOW);
+  Serial.println("HEATER STATUS: UP");
 }
 
 void powerOffHeater() {
   digitalWrite(HeaterPin, HIGH);
+  Serial.println("HEATER STATUS: DOWN");
 }
 
 void powerOffPump() {
   digitalWrite(PumpPin, HIGH);
+  Serial.println("PUMP STATUS: DOWN");
 }
 
 void powerOffLight () {
