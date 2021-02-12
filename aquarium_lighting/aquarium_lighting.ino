@@ -13,10 +13,10 @@
 const int TemperaturePin = 2;
 const int HeaterPin = 5;
 const int PumpPin = 6;
-const int BlueLedPin = 10;
+const int BlueLedPin = 13;
 const int GreenLedPin = 11;
-const int RedLedPin = 12;
-const int WhiteLedPin = 13;
+const int RedLedPin = 10;
+const int WhiteLedPin = 12;
 const int RTCDatPin = 8;
 const int RTCCLKPin = 9;
 const int RTCRSTPin = 7;
@@ -41,6 +41,7 @@ const int MoonLightEndTime = 23;
 const int MoonLightStartEndKelvin = 10000;
 const int MoonLigtStartEndMinutesFade = 30;
 const float MaxBrightnessPercentage = 80;
+bool heaterUp = false;
 
 void setup() {
   Serial.begin(9600);
@@ -56,7 +57,7 @@ void setup() {
   server.begin();
 }
 
-void loop() {
+void loop() {  
   RtcDateTime now = Rtc.GetDateTime();
   int hour = now.Hour();
   int minute = now.Minute();
@@ -97,10 +98,12 @@ void PumpControl(int currentHour) {
 
 void HeaterControl(float temperature, float minTemperature) {
   if (temperature < 50 & temperature > 10) {
-    if (temperature < (minTemperature + (minTemperature * 0.03))) {
+    if ((heaterUp && ((temperature - 1) < minTemperature)) || temperature < minTemperature) {
+      heaterUp = true;
       powerOnHeater();
     }
     else if (temperature > minTemperature) {
+       heaterUp = false;
       powerOffHeater();
     }
   }
