@@ -11,15 +11,28 @@
 
 //Pins Definitions
 const int TemperaturePin = 2;
-const int HeaterPin = 5;
-const int PumpPin = 6;
-const int BlueLedPin = 13;
+const int HeaterPin = 4;
+const int PumpPin = 3;
+const int BlueLedPin = 12;
 const int GreenLedPin = 11;
-const int RedLedPin = 10;
-const int WhiteLedPin = 12;
+const int RedLedPin = 13;
+const int WhiteLedPin = 10;
 const int RTCDatPin = 8;
 const int RTCCLKPin = 9;
 const int RTCRSTPin = 7;
+const int WaterFlowPin = 21;
+
+
+float calibrationFactor = 4.5;
+int pulseCount;
+float flowRate;
+unsigned int flowMilliLitres;
+unsigned long totalMilliLitres;
+unsigned long oldTime;
+void pulseCounter()
+{  
+  pulseCount++;
+}
 
 //Declarations
 EthernetServer server(80); //PORTA EM QUE A CONEXÃO SERÁ FEITA
@@ -31,7 +44,7 @@ DallasTemperature sensors(&ourWire);
 //Constants
 byte mac[] = { 0xDE, 0xAD, 0xBE, 0xEF, 0xFE, 0xED }; //ATRIBUIÇÃO DE ENDEREÇO MAC AO ENC28J60
 byte ip[] = { 192, 168, 15, 20 }; //IP Ethernet Shield
-const int MinWaterTemperature = 25;
+const int MinWaterTemperature = 24;
 const int SunLightStartTime = 5;
 const int SunLightEndTime = 21;
 const int SunLightStartEndKelvin = 1000;
@@ -40,8 +53,9 @@ const int MoonLightStartTime = 21;
 const int MoonLightEndTime = 23;
 const int MoonLightStartEndKelvin = 10000;
 const int MoonLigtStartEndMinutesFade = 30;
-const float MaxBrightnessPercentage = 80;
+const float MaxBrightnessPercentage = 10;
 bool heaterUp = false;
+
 
 void setup() {
   Serial.begin(9600);
@@ -50,30 +64,50 @@ void setup() {
   pinMode(RedLedPin, OUTPUT);
   pinMode(GreenLedPin, OUTPUT);
   pinMode(WhiteLedPin, OUTPUT);
-  SetTime();
+  pinMode(WaterFlowPin, INPUT);  
+  attachInterrupt(digitalPinToInterrupt(WaterFlowPin), pulseCounter, RISING);
+  //SetTime();
   sensors.begin();
   Wire.begin();
   Rtc.Begin();
   server.begin();
 }
 
-void loop() {  
+void loop() {
   RtcDateTime now = Rtc.GetDateTime();
   int hour = now.Hour();
   int minute = now.Minute();
-  float temperature = WaterTemperature();
   //SunLight
   CycleControl(hour, minute, SunLightStartTime, SunLightEndTime, SunLightStartEndKelvin, SunLigtStartEndMinutesFade);
   //MoonLight
   CycleControl(hour, minute, MoonLightStartTime, MoonLightEndTime, MoonLightStartEndKelvin, MoonLigtStartEndMinutesFade);
-  //Pump
   PumpControl(hour);
-  //Heater
-  HeaterControl(temperature, MinWaterTemperature);
+  HeaterControl();
   printTemperature();
   printTime(now.Year(), now.Month(), now.Day(), now.DayOfWeek(), now.Hour(), now.Minute(), now.Second());
-  EthernetShield();
+  //EthernetShield();  
+  MedidorFluxo();
   delay(1000);
+  Serial.println("------------------------------------------------------------------------");
+}
+
+int count = 0;
+
+void MedidorFluxo() {
+    if ((millis() - oldTime) > 1000)   // Only process counters once per second
+    {
+      detachInterrupt(digitalPinToInterrupt(WaterFlowPin));
+      flowRate = ((1000.0 / (millis() - oldTime)) * pulseCount) / calibrationFactor;
+      oldTime = millis();
+      flowMilliLitres = (flowRate / 60) * 1000;
+      totalMilliLitres += flowMilliLitres;
+      unsigned int frac;
+      char buf[100];  
+      snprintf(buf, sizeof(buf), "Flow rate: %dL/min - Total: %dL", int(flowRate), totalMilliLitres / 1000);
+      Serial.println(buf);
+      pulseCount = 0;
+      attachInterrupt(digitalPinToInterrupt(WaterFlowPin), pulseCounter, RISING);
+    }
 }
 
 void CycleControl(int currentHour, int currentMinute, int startHour, int endHour, int startKelvin, int startEndFade) {
@@ -91,19 +125,20 @@ void CycleControl(int currentHour, int currentMinute, int startHour, int endHour
 void PumpControl(int currentHour) {
   if (currentHour % 2 == 0)  {
     powerOnPump();
-  } else {
+  } else {       
     powerOffPump();
   }
 }
 
-void HeaterControl(float temperature, float minTemperature) {
+void HeaterControl() {
+  float temperature = WaterTemperature();
   if (temperature < 50 & temperature > 10) {
-    if ((heaterUp && ((temperature - 1) < minTemperature)) || temperature < minTemperature) {
+    if ((heaterUp && ((temperature - 1) < MinWaterTemperature)) || temperature < MinWaterTemperature) {
       heaterUp = true;
       powerOnHeater();
     }
-    else if (temperature > minTemperature) {
-       heaterUp = false;
+    else if (temperature > MinWaterTemperature) {
+      heaterUp = false;
       powerOffHeater();
     }
   }
@@ -246,6 +281,13 @@ int redFromKelvin(int kelvin) {
   return max(min(redValue, 255), 0);
 }
 
+void printWaterFlow(float fluxo)
+{
+  Serial.print("Fluxo de: ");
+  Serial.print(fluxo);
+  Serial.println(" L/min");
+}
+
 void printTime(int year, int month, int day, int dayOfWeek, int hour, int minute, int second)
 {
   char daysOfTheWeek[7][12] = {"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"};
@@ -295,6 +337,7 @@ void SetTime() {
   }
   else if (now > compiled) { //SENÃO, SE A INFORMAÇÃO REGISTRADA FOR MAIOR QUE A INFORMAÇÃO COMPILADA, FAZ
     Serial.println("As informações atuais do RTC são mais recentes que as de compilação. Isso é o esperado."); //IMPRIME O TEXTO NO MONITOR SERIAL
+    Rtc.SetDateTime(compiled);
     Serial.println(); //QUEBRA DE LINHA NA SERIAL
   }
   else if (now == compiled) { //SENÃO, SE A INFORMAÇÃO REGISTRADA FOR IGUAL A INFORMAÇÃO COMPILADA, FAZ
@@ -303,8 +346,8 @@ void SetTime() {
   }
 }
 void TestPinLeds() {
-  analogWrite(BlueLedPin, 0);
-  analogWrite(RedLedPin, 0);
-  analogWrite(GreenLedPin, 0);
-  analogWrite(WhiteLedPin, 0);
+  analogWrite(BlueLedPin, 255);
+  analogWrite(RedLedPin, 255);
+  analogWrite(GreenLedPin, 255);
+  analogWrite(WhiteLedPin, 255);
 }
