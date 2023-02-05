@@ -5,21 +5,20 @@
 #include "DallasTemperature.h"
 #include "OneWire.h"
 #include "SPI.h"
-#include "UIPEthernet.h"
 #include "Wire.h"
 
 
 //Pins Definitions
-const int TemperaturePin = 2;
-const int HeaterPin = 4;
-const int PumpPin = 3;
-const int BlueLedPin = 12;
-const int GreenLedPin = 11;
-const int RedLedPin = 13;
-const int WhiteLedPin = 10;
-const int RTCDatPin = 8;
-const int RTCCLKPin = 9;
-const int RTCRSTPin = 7;
+const int TemperaturePin = 24;
+const int HeaterPin = 36;
+const int PumpPin = 34;
+const int BlueLedPin = 2;
+const int GreenLedPin = 4;
+const int RedLedPin = 5;
+const int WhiteLedPin = 3;
+const int RTCDatPin = 12;
+const int RTCCLKPin = 11;
+const int RTCRSTPin = 13;
 const int WaterFlowPin = 21;
 
 
@@ -35,7 +34,6 @@ void pulseCounter()
 }
 
 //Declarations
-EthernetServer server(80); //PORTA EM QUE A CONEXÃO SERÁ FEITA
 ThreeWire myWire(RTCDatPin, RTCCLKPin, RTCRSTPin); // DAT, CLK, RST
 RtcDS1302<ThreeWire> Rtc(myWire);
 OneWire ourWire(TemperaturePin);
@@ -58,19 +56,17 @@ bool heaterUp = false;
 
 
 void setup() {
-  Serial.begin(9600);
-  Ethernet.begin(mac, ip);
+  Serial.begin(9600);  
   pinMode(BlueLedPin, OUTPUT);
   pinMode(RedLedPin, OUTPUT);
   pinMode(GreenLedPin, OUTPUT);
   pinMode(WhiteLedPin, OUTPUT);
   pinMode(WaterFlowPin, INPUT);  
   attachInterrupt(digitalPinToInterrupt(WaterFlowPin), pulseCounter, RISING);
-  //SetTime();
+  SetTime();
   sensors.begin();
   Wire.begin();
-  Rtc.Begin();
-  server.begin();
+  Rtc.Begin();  
 }
 
 void loop() {
@@ -126,7 +122,7 @@ void PumpControl(int currentHour) {
   if (currentHour % 2 == 0)  {
     powerOnPump();
   } else {       
-    powerOffPump();
+    powerOffPump();    
   }
 }
 
@@ -151,37 +147,6 @@ float WaterTemperature() {
 
 String readString = String(30);
 int status = 0;
-void HeaderHTML (EthernetClient client) {
-  client.println("<html>");
-  client.println("HTTP/1.1 200 OK\r\n");
-  client.println("Content-Type: text/html\r\n");
-  client.println("<html>");
-}
-
-void BodyHTML (EthernetClient client) {
-  client.println("<body style=background-color:#ADD8E6>\r\n");
-  client.println("<center><font color='blue'><h1>Aquario</font></center></h1>");
-  client.println("</body>");
-}
-
-void FooterHTML(EthernetClient client) {
-  client.println("</html>");
-}
-
-void EthernetShield() {
-  EthernetClient client = server.available();
-  if (client) {
-    while (client.connected()) {
-      if (client.available()) {
-        BodyHTML(client);
-        HeaderHTML(client);
-        FooterHTML(client);
-        client.stop();
-      }
-    }
-  }
-}
-
 int cycleKelvin(int hours, int minutes, int startCycleHour, int endCycleHour, int startKelvin) {
   int halfCycleHour = (endCycleHour - startCycleHour) / 2;
   if (hours < (halfCycleHour + startCycleHour)) {
