@@ -10,16 +10,17 @@
 
 //Pins Definitions
 const int TemperaturePin = 24;
-const int HeaterPin = 36;
+const int HeaterPin = 38;
 const int PumpPin = 34;
-const int BlueLedPin = 2;
-const int GreenLedPin = 4;
-const int RedLedPin = 5;
-const int WhiteLedPin = 3;
 const int RTCDatPin = 12;
 const int RTCCLKPin = 11;
 const int RTCRSTPin = 13;
 const int WaterFlowPin = 21;
+
+const int BlueLedPin = 3;
+const int GreenLedPin = 2;
+const int RedLedPin = 4;
+const int WhiteLedPin = 5;
 
 
 float calibrationFactor = 4.5;
@@ -49,7 +50,7 @@ const int SunLightStartEndKelvin = 1000;
 const int SunLigtStartEndMinutesFade = 420;
 const int MoonLightStartTime = 21;
 const int MoonLightEndTime = 23;
-const int MoonLightStartEndKelvin = 10000;
+const int MoonLightStartEndKelvin = 12000;
 const int MoonLigtStartEndMinutesFade = 30;
 const float MaxBrightnessPercentage = 10;
 bool heaterUp = false;
@@ -112,16 +113,16 @@ void CycleControl(int currentHour, int currentMinute, int startHour, int endHour
   int endMinutesCycle = endHour * 60;
   if (currentMinutesTime >= startMinutesCycle && currentMinutesTime <= endMinutesCycle) {
     int brightness = fadeBrightness(currentHour, currentMinute, startHour, endHour, startEndFade, startEndFade);
-    int kelvin = cycleKelvin(currentHour, currentMinute, startHour, endHour, startKelvin);
+    int kelvin = cycleKelvin(currentHour, currentMinute, startHour, endHour, startKelvin);   
     printLightInformation(kelvin, brightness);
     powerOnLight(kelvin, brightness);
   }
 }
 
 void PumpControl(int currentHour) {
-  if (currentHour % 2 == 0)  {
+  if (currentHour > 6 && currentHour < 23 && currentHour % 2 == 0)  {
     powerOnPump();
-  } else {       
+  } else {           
     powerOffPump();    
   }
 }
@@ -133,8 +134,8 @@ void HeaterControl() {
       heaterUp = true;
       powerOnHeater();
     }
-    else if (temperature > MinWaterTemperature) {
-      heaterUp = false;
+    else if (temperature > MinWaterTemperature) {      
+      heaterUp = false;      
       powerOffHeater();
     }
   }
